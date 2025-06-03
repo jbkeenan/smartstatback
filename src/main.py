@@ -4,6 +4,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))  # DON'T CHANGE T
 
 from flask import Flask, jsonify
 from flask_sqlalchemy import SQLAlchemy
+from flask_cors import CORS
 from src.models.base import db
 from src.routes.auth import auth_bp
 from src.routes.properties import properties_bp
@@ -14,6 +15,9 @@ from src.routes.admin import admin_bp
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev_key_12345')
+
+# Enable CORS for frontend requests
+CORS(app, resources={r"/api/*": {"origins": "https://smartstatfront.onrender.com"}})
 
 # Switch to SQLite for deployment compatibility
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///thermostat_system.db'
