@@ -44,6 +44,25 @@ class ThermostatAdapter(abc.ABC):
     def is_online(self):
         """Check if the thermostat is online."""
         pass
+    
+    def get_status(self):
+        """Get the complete status of the thermostat."""
+        return {
+            'temperature': self.get_temperature(),
+            'humidity': self.get_humidity(),
+            'mode': self.get_mode(),
+            'online': self.is_online()
+        }
+    
+    def send_command(self, command_type, parameters):
+        """Send a generic command to the thermostat."""
+        if command_type == 'set_temperature':
+            return self.set_temperature(parameters.get('temperature'))
+        elif command_type == 'set_mode':
+            return self.set_mode(parameters.get('mode'))
+        else:
+            logger.error(f"Unsupported command type: {command_type}")
+            return False
 
 
 class NestThermostatAdapter(ThermostatAdapter):
@@ -416,37 +435,118 @@ class PioneerThermostatAdapter(ThermostatAdapter):
             response = requests.get(url, headers=self._get_headers())
             response.raise_for_status()
             data = response.json()
-            return data.get("online", False)
+            return data.get("online", True)  # Default to True if not specified
         except Exception as e:
             logger.error(f"Error checking online status for Pioneer thermostat: {e}")
             return False
 
 
-class ThermostatAdapterFactory:
-    """Factory for creating thermostat adapters based on brand."""
+class GenericThermostatAdapter(ThermostatAdapter):
+    """Generic adapter for thermostats without direct API access."""
     
-    @staticmethod
-    def create_adapter(brand, device_id, api_key=None, api_token=None, ifttt_key=None):
-        """
-        Create and return a thermostat adapter for the specified brand.
+    def __init__(self, device_id):
+        self.device_id = device_id
+    
+    def get_temperature(self):
+        # Return cached value from our database
+        from thermostats.models import Thermostat
+        try:
+            thermostat = Thermostat.objects.get(device_id=self.device_id)
+            return thermostat.current_temperature
+        except Exception as e:
+            logger.error(f"Error getting cached temperature for generic thermostat: {e}")
+            return None
+    
+    def set_temperature(self, temperature):
+        # Update cached value in our database
+        from thermostats.models import Thermostat
+        try:
+            thermostat = Thermostat.objects.get(device_id=self.device_id)
+            thermostat.target_temperature = temperature
+            thermostat.save(update_fields=['target_temperature'])
+            return True
+        except Exception as e:
+            logger.error(f"Error setting temperature for generic thermostat: {e}")
+            return False
+    
+    def get_humidity(self):
+        # Return cached value from our database
+        from thermostats.models import Thermostat
+        try:
+            thermostat = Thermostat.objects.get(device_id=self.device_id)
+            return thermostat.current_humidity
+        except Exception as e:
+            logger.error(f"Error getting cached humidity for generic thermostat: {e}")
+            return None
+    
+    def get_mode(self):
+        # Return cached value from our database
+        from thermostats.models import Thermostat
+        try:
+            thermostat = Thermostat.objects.get(device_id=self.device_id)
+            return thermostat.mode
+        except Exception as e:
+            logger.error(f"Error getting cached mode for generic thermostat: {e}")
+            return "unknown"
+    
+    def set_mode(self, mode):
+        # Update cached value in our database
+        from thermostats.models import Thermostat
+        try:
+            thermostat = Thermostat.objects.get(device_id=self.device_id)
+            thermostat.mode = mode
+            thermostat.save(update_fields=['mode'])
+            return True
+        except Exception as e:
+            logger.error(f"Error setting mode for generic thermostat: {e}")
+            return False
+    
+    def is_online(self):
+        # Return cached value from our database
+        from thermostats.models import Thermostat
+        try:
+            thermostat = Thermostat.objects.get(device_id=self.device_id)
+            return thermostat.is_online
+        except Exception as e:
+            logger.error(f"Error getting cached online status for generic thermostat: {e}")
+            return False
+
+
+def get_thermostat_adapter(thermostat):
+    """
+    Factory function to create the appropriate thermostat adapter based on the thermostat brand.
+    
+    Args:
+        thermostat: A Thermostat model instance
         
-        Args:
-            brand (str): The thermostat brand (nest, cielo, pioneer)
-            device_id (str): The device ID
-            api_key (str, optional): API key for direct API access
-            api_token (str, optional): API token for direct API access
-            ifttt_key (str, optional): IFTTT webhook key for Cielo integration
-            
-        Returns:
-            ThermostatAdapter: An adapter for the specified brand
-        """
-        brand = brand.lower()
-        
-        if brand == "nest":
-            return NestThermostatAdapter(device_id, api_key, api_token)
-        elif brand == "cielo":
-            return CieloThermostatAdapter(device_id, api_key, api_token, ifttt_key)
-        elif brand == "pioneer":
-            return PioneerThermostatAdapter(device_id, api_key, api_token)
+    Returns:
+        An instance of a ThermostatAdapter subclass
+    """
+    if thermostat.brand == 'nest':
+        return NestThermostatAdapter(
+            device_id=thermostat.device_id,
+            api_key=thermostat.api_key,
+            api_token=thermostat.api_token
+        )
+    elif thermostat.brand == 'cielo':
+        # Check if we have direct API credentials
+        if thermostat.api_key and thermostat.api_token:
+            return CieloThermostatAdapter(
+                device_id=thermostat.device_id,
+                api_key=thermostat.api_key,
+                api_token=thermostat.api_token
+            )
         else:
-            raise ValueError(f"Unsupported thermostat brand: {brand}")
+            # Fall back to IFTTT integration
+            return CieloThermostatAdapter(
+                device_id=thermostat.device_id,
+                ifttt_key=thermostat.ifttt_key
+            )
+    elif thermostat.brand == 'pioneer':
+        return PioneerThermostatAdapter(
+            device_id=thermostat.device_id,
+            api_key=thermostat.api_key,
+            api_token=thermostat.api_token
+        )
+    else:
+        return GenericThermostatAdapter(device_id=thermostat.device_id)
