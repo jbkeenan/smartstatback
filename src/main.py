@@ -12,6 +12,9 @@ from src.routes.thermostats import thermostats_bp
 from src.routes.calendars import calendars_bp
 from src.routes.schedules import schedules_bp
 from src.routes.admin import admin_bp
+from src.routes.vendor_cielo import vendor_cielo_bp
+from src.routes.vendor_nest import vendor_nest_bp
+from src.routes.vendor_nethome import vendor_nethome_bp
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev_key_12345')
@@ -32,6 +35,11 @@ app.register_blueprint(thermostats_bp, url_prefix='/api/thermostats')
 app.register_blueprint(calendars_bp, url_prefix='/api/calendars')
 app.register_blueprint(schedules_bp, url_prefix='/api/schedules')
 app.register_blueprint(admin_bp, url_prefix='/api/admin')
+
+# Register vendor-specific blueprints for account management and diagnostics
+app.register_blueprint(vendor_cielo_bp, url_prefix='/api/vendors/cielo')
+app.register_blueprint(vendor_nest_bp, url_prefix='/api/vendors/nest')
+app.register_blueprint(vendor_nethome_bp, url_prefix='/api/vendors/nethome')
 
 @app.route('/')
 def index():
